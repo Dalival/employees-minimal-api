@@ -4,13 +4,14 @@ using EgorEmployees.RestApi.Repositories;
 using EgorEmployees.RestApi.Repositories.Interfaces;
 using EgorEmployees.RestApi.Services;
 using EgorEmployees.RestApi.Services.Interfaces;
+using EgorEmployees.RestApi.Validation;
 
 using FastEndpoints;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddFastEndpoints();
 var config = builder.Configuration;
 
+builder.Services.AddFastEndpoints(x => x.IncludeAbstractValidators = true);
 Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 builder.Services.AddSingleton<IDbConnectionFactory>(_ => new DbConnectionFactory(config.GetValue<string>("Database:ConnectionString")!));
@@ -22,7 +23,12 @@ builder.Services.AddSingleton<IPositionService, PositionService>();
 
 var app = builder.Build();
 
-app.UseFastEndpoints();
+app.UseMiddleware<ValidationExceptionMiddleware>();
+app.UseFastEndpoints(x =>
+{
+    x.Errors.ResponseBuilder = (failures, context, statusCode) =>
+        new ValidationFailureResponse { Errors = failures.Select(y => y.ErrorMessage).ToList() };
+});
 
 var databaseInitializer = app.Services.GetRequiredService<DatabaseInitializer>();
 await databaseInitializer.InitializeAsync();
